@@ -1,0 +1,81 @@
+PASOS:
+
+1- Desarrollar una API REST (restMovies) usando Python como lenguaje y MongoDB como base de datos
+ 1a- Las librerías a usar incluyen Flask (para desarrollar los end points) y Pymongo (para conectarse con MongoDB)
+ 1b- El flujo incluye autenticación con el mecanismo JWT para generar un token de autorización
+ 1c- Los end points usarán dicho token como request header
+2- Realizar la prueba funcional corriendo mongo y restMovies en forma local mediante JMeter
+3- Finalizada la prueba funcional, crear una imagen docker de la aplicación
+4- Luego crear un YAML docker compose combinando la imagen restMovies con la imagen oficial de MongoDB
+ 4a- Probar el funcionamiento del docker compose de manera local
+5- Subir la imagen de restMovies al DockerHub
+7- Subir la aplicación, incluido el YAML de docker-compose, a un repositorio GitHub
+8- Crear una VM en GCP usando Terraform capturando la IP pública de la misma
+9- Instalar docker en dicha VM
+10- Correr el docker compose en la VM y probarlo con JMeter apuntando a la IP de la VM
+
+## Comando para crear la imagen docker
+sudo docker build --no-cache -t pythonurlrequestarg .
+
+## Comando para lanzar el contenedor con URL de ejemplo
+sudo docker run -it pythonurlrequestarg https://es.wikipedia.org/wiki/Main
+
+## Comando docker para detener todos los contenedores corriendo
+sudo docker stop $(sudo docker ps -a -q)
+
+## Comando docker para matar todos los contenedores corriendo
+sudo docker rm $(sudo docker ps -a -q)
+
+## Comando docker para ejecutar un contenedor que mapea un volumen
+sudo docker run -v /home/ubuntu/Rodrigo/Code/Python/PythonForDocker:/app -it pythonurlrromfile
+
+## Comando docker para ejecutar el contenedor de la aplicación API y que vea a mongo
+sudo docker run --network host -p 4000:4000 restmovies .
+
+## Comando docker para ejecutar el contenedor de mongo
+sudo docker run -d -p 27017:27017 mongo:latest
+
+## Comando docker para pushear una imagen al docker hub
+sudo docker push rodro167/restmovies:latest
+(crear la imagen con referencia a mi repo)
+
+## Buscar una variante en donde el archivo a leer esté en una subcarpeta
+
+Cheaquar status mongodb
+sudo systemctl status mongod
+
+
+End points
+
+- Security
+-- Login  YA ESTA
+-- Logout VENDRA EN LA VERSION 2.0
+- Users
+-- Create User YA ESTA - MOVER LIBRERIA
+-- Update Password YA ESTÁ
+-- Delete User 
+- Movies
+-- Create Movie YA ESTA - MOVER LIBRERÍA
+-- Update Movie YA ESTÁ - MOVER LIBRERÍA
+-- Delete Movie YA ESTA - MOVER LIBRERIA
+-- Get Movies By Country/ies YA ESTÁN AMBOS - MOVER LIBRERÍA
+-- Get Movies By Actor/s YA ESTÁN AMBOS
+-- Get Movies By Year (Equal, Before, After) YA ESTÁN
+-- Get Movies By Duration (Equal, Less, More) YA ESTÁN
+-- Get Movies By Genre/s YA ESTÁN
+-- Get Movies By Director/s YA ESTÁN
+-- Get Movies By Title YA ESTÁ
+
+
+
+
+
+
+
+
+
+
+
+
+
+

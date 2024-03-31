@@ -1,0 +1,28 @@
+version: '3'
+services:
+  web:
+    container_name: web
+    image: rodro167/restmovies:latest
+    ports:
+      - "4000:4000"
+    depends_on:
+      - mongo
+    networks:
+      - app_net
+  mongo:
+    container_name: mongo
+    image: mongo:latest
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: rest_movies
+    networks:
+      - app_net
+
+volumes:
+  mongo_data:
+
+networks:
+  app_net:
