@@ -1,365 +1,330 @@
-import pymongo 
-import json
-from flask import Flask, jsonify, request, render_template
+import os
+import logging
+from flask import Flask, jsonify, request
+import pymongo
 from werkzeug.security import generate_password_hash
-from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
-from restMoviesGuest import *
-from restMoviesAdmin import *
-from restMoviesEditor import *
-from bson import ObjectId
+from flask_jwt_extended import JWTManager, jwt_required
+from datetime import timedelta
+from dotenv import load_dotenv
 
-def connectToMongoDB():
-    myClient = pymongo.MongoClient("mongodb://localhost:27017/unicode_decode_error_handler='ignore'")
-    myDB = myClient["restMovies"]
-    return myDB
+from restMoviesGuest import (
+    getMovies, getMoviesByTitle, getMoviesByActor, getMoviesByActors,
+    getMoviesByCountry, getMoviesByCountries, getMoviesByGenre,
+    getMoviesByGenres, getMoviesByDirector, getMoviesByDirectors,
+    rateMovie, commentMovie, getStars, getComments,
+)
+from restMoviesAdmin import login
+from db_helpers import query_movies, parse_object_id, require_json
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+load_dotenv()
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017/")
+'''MONGO_URI = os.getenv("MONGO_URI", "mongodb://mongo:27017/")'''
+MONGO_DB = os.getenv("MONGO_DB", "restMovies")
+JWT_SECRET = os.getenv("JWT_SECRET_KEY", "change-this-to-a-secure-random-string")
+FLASK_PORT = int(os.getenv("FLASK_PORT", "4000"))
+JWT_EXPIRES_HOURS = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES_HOURS", "24"))
 
 
+def connect_to_mongodb():
+    """Create and return the MongoDB database handle (single connection)."""
+    client = pymongo.MongoClient(MONGO_URI)
+    return client[MONGO_DB]
+
+
+# ---------------------------------------------------------------------------
+# App factory
+# ---------------------------------------------------------------------------
 app = Flask(__name__)
 app.config['JSON_AS_ASCII'] = False
-app.config['JWT_SECRET_KEY'] = 'setrocogirdor'  # Cambia esto a una cadena segura en un entorno de producción'''
+app.config['JWT_SECRET_KEY'] = JWT_SECRET
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=JWT_EXPIRES_HOURS)
 jwt = JWTManager(app)
-myDB = connectToMongoDB()
+db = connect_to_mongodb()
 
 
-@app.route('/form/')
-def showInsertForm():
-    return render_template('form.html')
+# ---------------------------------------------------------------------------
+# Error handlers — consistent JSON error responses
+# ---------------------------------------------------------------------------
+@app.errorhandler(400)
+def bad_request(error):
+    return jsonify({"error": str(error.description)}), 400
 
+
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({"error": "Resource not found"}), 404
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    logger.exception("Internal server error")
+    return jsonify({"error": "Internal server error"}), 500
+
+
+# ---------------------------------------------------------------------------
+# Movies — READ endpoints
+# ---------------------------------------------------------------------------
 @app.route('/movies/', methods=['GET'])
 @jwt_required()
-def getMoviesPath():
-    return getMovies(myDB)
+def get_movies():
+    return getMovies(db)
+
 
 @app.route('/movies/actor/<string:actor>', methods=['GET'])
 @jwt_required()
-def getMoviesByActorPath(actor):
-    return getMoviesByActor(myDB, actor)
+def get_movies_by_actor(actor):
+    return getMoviesByActor(db, actor)
+
 
 @app.route('/movies/actors', methods=['POST'])
 @jwt_required()
-def getMoviesByActorsPath():
-    return getMoviesByActors(myDB, request)
+def get_movies_by_actors():
+    return getMoviesByActors(db)
+
 
 @app.route('/movies/title/<string:title>', methods=['GET'])
 @jwt_required()
-def getMoviesByTitlePath(title):
-    return getMoviesByTitle(myDB, title)
+def get_movies_by_title(title):
+    return getMoviesByTitle(db, title)
+
 
 @app.route('/movies/country/<string:country>', methods=['GET'])
 @jwt_required()
-def getMoviesByCountryPath(country):
-    return getMoviesByCountry(myDB, country)
+def get_movies_by_country(country):
+    return getMoviesByCountry(db, country)
+
 
 @app.route('/movies/countries', methods=['POST'])
 @jwt_required()
-def getMoviesByCountriesPath():
-    return getMoviesByCountries(myDB, request)
+def get_movies_by_countries():
+    return getMoviesByCountries(db)
 
 
 @app.route('/movies/genre/<string:genre>', methods=['GET'])
 @jwt_required()
-def getMoviesByGenrePath(genre):
-    return getMoviesByGenre(myDB, genre)
+def get_movies_by_genre(genre):
+    return getMoviesByGenre(db, genre)
+
 
 @app.route('/movies/genres', methods=['POST'])
 @jwt_required()
-def getMoviesByGenresPath():
-    return getMoviesByGenres(myDB, request)
+def get_movies_by_genres():
+    return getMoviesByGenres(db)
 
-    
+
 @app.route('/movies/director/<string:director>', methods=['GET'])
 @jwt_required()
-def getMoviesByDirectorPath(director):
-    return getMoviesByDirector(myDB, director)
+def get_movies_by_director(director):
+    return getMoviesByDirector(db, director)
+
 
 @app.route('/movies/directors', methods=['POST'])
 @jwt_required()
-def getMoviesByDirectorsPath():
-    return getMoviesByDirectors(myDB, request)
+def get_movies_by_directors():
+    return getMoviesByDirectors(db)
 
 
 @app.route('/movies/runtime/lessthan/<int:runtime>', methods=['GET'])
 @jwt_required()
-def getMoviesByLessDuration(runtime):
-    moviesCollection = myDB["movies"]
-    query = {"runtime": { "$lt": runtime}}
-    moviesList = moviesCollection.find(query)
-    movies = []
-    for movie in moviesList:
-        movie['_id'] = str(movie['_id'])
-        movies.append(movie)
-    data_dict = {"movies": movies}
-    return jsonify(data_dict)
+def get_movies_runtime_less(runtime):
+    return query_movies(db, {"runtime": {"$lt": runtime}})
+
 
 @app.route('/movies/runtime/morethan/<int:runtime>', methods=['GET'])
 @jwt_required()
-def getMoviesByMoreDuration(runtime):
-    moviesCollection = myDB["movies"]
-    query = {"runtime": { "$gt": runtime}}
-    moviesList = moviesCollection.find(query)
-    movies = []
-    for movie in moviesList:
-        movie['_id'] = str(movie['_id'])
-        movies.append(movie)
-    data_dict = {"movies": movies}
-    return jsonify(data_dict)
+def get_movies_runtime_more(runtime):
+    return query_movies(db, {"runtime": {"$gt": runtime}})
+
 
 @app.route('/movies/runtime/<int:runtime>', methods=['GET'])
 @jwt_required()
-def getMoviesByDuration(runtime):
-    moviesCollection = myDB["movies"]
-    query = {"runtime": { "$eq": runtime}}
-    moviesList = moviesCollection.find(query)
-    movies = []
-    for movie in moviesList:
-        movie['_id'] = str(movie['_id'])
-        movies.append(movie)
-    data_dict = {"movies": movies}
-    return jsonify(data_dict)
+def get_movies_by_runtime(runtime):
+    return query_movies(db, {"runtime": {"$eq": runtime}})
+
 
 @app.route('/movies/year/before/<int:year>', methods=['GET'])
 @jwt_required()
-def getMoviesBeforeYear(year):
-    moviesCollection = myDB["movies"]
-    query = {"year": { "$lt": year}}
-    moviesList = moviesCollection.find(query)
-    movies = []
-    for movie in moviesList:
-        movie['_id'] = str(movie['_id'])
-        movies.append(movie)
-    data_dict = {"movies": movies}
-    return jsonify(data_dict)
+def get_movies_before_year(year):
+    return query_movies(db, {"year": {"$lt": year}})
+
 
 @app.route('/movies/year/after/<int:year>', methods=['GET'])
 @jwt_required()
-def getMoviesAfterYear(year):
-    moviesCollection = myDB["movies"]
-    query = {"year": { "$gt": year}}
-    moviesList = moviesCollection.find(query)
-    movies = []
-    for movie in moviesList:
-        movie['_id'] = str(movie['_id'])
-        movies.append(movie)
-    data_dict = {"movies": movies}
-    return jsonify(data_dict)
+def get_movies_after_year(year):
+    return query_movies(db, {"year": {"$gt": year}})
+
 
 @app.route('/movies/year/<int:year>', methods=['GET'])
 @jwt_required()
-def getMoviesByYear(year):
-    moviesCollection = myDB["movies"]
-    query = {"year": { "$eq": year}}
-    moviesList = moviesCollection.find(query)
-    movies = []
-    for movie in moviesList:
-        movie['_id'] = str(movie['_id'])
-        movies.append(movie)
-    data_dict = {"movies": movies}
-    return jsonify(data_dict)
+def get_movies_by_year(year):
+    return query_movies(db, {"year": {"$eq": year}})
 
-@app.route('/movies/create', methods=['POST'])
+
+# ---------------------------------------------------------------------------
+# Movies — Ratings & Comments
+# ---------------------------------------------------------------------------
+@app.route('/movies/rate', methods=['POST'])
 @jwt_required()
-def createMovie():
-    myDB = connectToMongoDB()
-    moviesCollection = myDB["movies"]
-    content_type = request.headers.get('Content-Type')
+def rate_movie():
+    return rateMovie(db)
 
-    if (content_type == 'application/json'):
-        jsonBody = request.json
-        result = moviesCollection.insert_one(jsonBody)
-        if result.acknowledged:
-            successfulInsertionMessage = str(result.inserted_id)
-            print(successfulInsertionMessage)
-            response_data = {"inserteId": successfulInsertionMessage }
-        else:
-            response_data = {"message": "Error al insertar el documento"}
-        
-        # Devuelve una respuesta en formato JSON
-        return jsonify(response_data)
-    else:
-        return 'Content-Type not accepted'
-    
 
-@app.route('/movies/update/<string:_id>', methods=['PUT'])
+@app.route('/movies/comment', methods=['POST'])
 @jwt_required()
-def updateMovie(_id):
-    myDB = connectToMongoDB()
-    moviesCollection = myDB["movies"]
-    content_type = request.headers.get('Content-Type')
+def comment_movie():
+    return commentMovie(db)
 
-    if (content_type == 'application/json'):
-        
-        documentId = ObjectId(_id)     
-        jsonBody = request.get_json()
-        filterCriteria = {'_id': documentId}
-        updateOperation = {'$set': jsonBody}
 
-        result = moviesCollection.update_one(filterCriteria, updateOperation)
-        print(result.modified_count)
-        print(result.raw_result)
-        if result.modified_count > 0:
-            successfulUpdateMessage = str(result)
-            result_dict = {
-                "matched_count": result.matched_count,
-                "modified_count": result.modified_count,
-                "upserted_id": result.upserted_id,
-                "raw_result": result.raw_result,
-                # Otros atributos que desees incluir
-            }
-
-            # Imprimir el resultado en formato JSON
-            print(json.dumps(result_dict, indent=2))
-            print(successfulUpdateMessage)
-            response_data = {"updatedId": successfulUpdateMessage }
-        else:
-            response_data = {"message": "Error al insertar el documento"}
-        
-        # Devuelve una respuesta en formato JSON
-        return jsonify(response_data)
-    else:
-        return 'Content-Type not accepted'
-    
-@app.route('/movies/delete/<string:_id>', methods=['DELETE'])
+@app.route('/movies/<string:movie_id>/stars', methods=['GET'])
 @jwt_required()
-def deleteMovie(_id):
-    myDB = connectToMongoDB()
-    moviesCollection = myDB["movies"]
-    content_type = request.headers.get('Content-Type')
+def get_stars(movie_id):
+    return getStars(db, movie_id)
 
-    if (content_type == 'application/json'):
-        
-        documentId = ObjectId(_id)     
-        filterCriteria = {'_id': documentId}
- 
-        result = moviesCollection.delete_one(filterCriteria)
-        print(result.deleted_count)
-        print(result.raw_result)
-        if result.deleted_count > 0:
-            successfulDeleteMessage = str(result)
-            result_dict = {
-                "modified_count": result.deleted_count,
-                "raw_result": result.raw_result,
-                # Otros atributos que desees incluir
-            }
 
-            # Imprimir el resultado en formato JSON
-            print(json.dumps(result_dict, indent=2))
-            print(successfulDeleteMessage)
-            response_data = {"deletedId": successfulDeleteMessage }
-        else:
-            response_data = {"message": "Error al borrar el documento"}
-        
-        # Devuelve una respuesta en formato JSON
-        return jsonify(response_data)
+@app.route('/movies/<string:movie_id>/comments', methods=['GET'])
+@jwt_required()
+def get_comments(movie_id):
+    return getComments(db, movie_id)
+
+
+# ---------------------------------------------------------------------------
+# Movies — WRITE endpoints  (RESTful paths)
+# ---------------------------------------------------------------------------
+@app.route('/movies/', methods=['POST'])
+@app.route('/movies/create', methods=['POST'])   # legacy alias
+@jwt_required()
+def create_movie():
+    json_body = require_json(request)
+    collection = db["movies"]
+
+    result = collection.insert_one(json_body)
+    if result.acknowledged:
+        logger.info("Movie inserted with id: %s", result.inserted_id)
+        return jsonify({"insertedId": str(result.inserted_id)}), 201
     else:
-        return 'Content-Type not accepted'
+        return jsonify({"error": "Failed to insert the movie"}), 500
+
+
+@app.route('/movies/<string:_id>', methods=['PUT'])
+@app.route('/movies/update/<string:_id>', methods=['PUT'])   # legacy alias
+@jwt_required()
+def update_movie(_id):
+    document_id = parse_object_id(_id)
+    json_body = require_json(request)
+    collection = db["movies"]
+
+    result = collection.update_one({'_id': document_id}, {'$set': json_body})
+
+    if result.matched_count == 0:
+        return jsonify({"error": "Movie not found"}), 404
+
+    logger.info("Movie %s updated (modified: %d)", _id, result.modified_count)
+    return jsonify({
+        "matchedCount": result.matched_count,
+        "modifiedCount": result.modified_count,
+    }), 200
+
+
+@app.route('/movies/<string:_id>', methods=['DELETE'])
+@app.route('/movies/delete/<string:_id>', methods=['DELETE'])   # legacy alias
+@jwt_required()
+def delete_movie(_id):
+    document_id = parse_object_id(_id)
+    collection = db["movies"]
+
+    result = collection.delete_one({'_id': document_id})
+
+    if result.deleted_count == 0:
+        return jsonify({"error": "Movie not found"}), 404
+
+    logger.info("Movie %s deleted", _id)
+    return jsonify({"deletedCount": result.deleted_count}), 200
+
+
+# ---------------------------------------------------------------------------
+# Users — Auth & management
+# ---------------------------------------------------------------------------
+@app.route('/login', methods=['POST'])
+def login_path():
+    return login(db, request)
+
 
 @app.route('/users/register', methods=['POST'])
-def registerUser():
+def register_user():
+    json_body = require_json(request)
+    users_collection = db["users"]
 
-    myDB = connectToMongoDB()
-    usersCollection = myDB["users"]
-    content_type = request.headers.get('Content-Type')
+    username = json_body.get('username')
+    password = json_body.get('password')
 
-    if (content_type == 'application/json'):
-        jsonBody = request.json
-        print(str(jsonBody))
-        username = jsonBody['username']
-        password = jsonBody['password']
-        hashed_password = generate_password_hash(password, method='scrypt')
-        print(hashed_password)
-        result = usersCollection.insert_one({'username': username, 'password': hashed_password})
-        if result.acknowledged:
-            successfulInsertionMessage = str(result.inserted_id)
-            print(successfulInsertionMessage)
-            response_data = {"inserteId": successfulInsertionMessage }
-        else:
-            response_data = {"message": "Error al insertar el documento"}
-        
-        # Devuelve una respuesta en formato JSON
-        return jsonify(response_data)
+    if not username or not password:
+        return jsonify({"error": "Username and password are required"}), 400
+
+    # Check if user already exists
+    if users_collection.find_one({'username': username}):
+        return jsonify({"error": "Username already exists"}), 409
+
+    hashed_password = generate_password_hash(password, method='scrypt')
+    result = users_collection.insert_one({'username': username, 'password': hashed_password})
+
+    if result.acknowledged:
+        logger.info("User '%s' registered", username)
+        return jsonify({"insertedId": str(result.inserted_id)}), 201
     else:
-        return 'Content-Type not accepted'
+        return jsonify({"error": "Failed to register user"}), 500
 
-@app.route('/users/updatePassword/<string:_id>', methods=['PUT'])
+
+@app.route('/users/<string:_id>/password', methods=['PUT'])
 @jwt_required()
-def updatePassword(_id):
-    myDB = connectToMongoDB()
-    usersCollection = myDB["users"]
-    content_type = request.headers.get('Content-Type')
-    print("HOlaaaaaaaaaaaaaaaaaaa")
+def update_password(_id):
+    document_id = parse_object_id(_id)
+    json_body = require_json(request)
+    users_collection = db["users"]
 
-    if (content_type == 'application/json'):
-        
-        documentId = ObjectId(_id)     
-        jsonBody = request.get_json()
-        filterCriteria = {'_id': documentId}
+    password = json_body.get('password')
+    if not password:
+        return jsonify({"error": "Password is required"}), 400
 
-        jsonBody = request.json
-        print(str(jsonBody))
-        password = jsonBody['password']
-        hashed_password = generate_password_hash(password, method='scrypt')
-        print(hashed_password)
-        jsonBody['password'] = hashed_password
-        updateOperation = {'$set': jsonBody}
+    hashed_password = generate_password_hash(password, method='scrypt')
+    result = users_collection.update_one(
+        {'_id': document_id},
+        {'$set': {'password': hashed_password}},
+    )
 
+    if result.matched_count == 0:
+        return jsonify({"error": "User not found"}), 404
 
-        result = usersCollection.update_one(filterCriteria, updateOperation)
-        print(result.modified_count)
-        print(result.raw_result)
-        if result.modified_count > 0:
-            successfulUpdateMessage = str(result)
-            result_dict = {
-                "matched_count": result.matched_count,
-                "modified_count": result.modified_count,
-                "upserted_id": result.upserted_id,
-                "raw_result": result.raw_result,
-                # Otros atributos que desees incluir
-            }
-
-            # Imprimir el resultado en formato JSON
-            print(json.dumps(result_dict, indent=2))
-            print(successfulUpdateMessage)
-            response_data = {"updatedId": successfulUpdateMessage }
-        else:
-            response_data = {"message": "Error al insertar el documento"}
-        
-        # Devuelve una respuesta en formato JSON
-        return jsonify(response_data)
-    else:
-        return 'Content-Type not accepted'
+    logger.info("Password updated for user %s", _id)
+    return jsonify({"modifiedCount": result.modified_count}), 200
 
 
-@app.route('/login', methods=['POST'])
-def loginPath():
-    return login(myDB, request)
-
-@app.route('/users/delete/<string:_id>', methods=['DELETE'])
+@app.route('/users/<string:_id>', methods=['DELETE'])
 @jwt_required()
-def deleteUsers(_id):
-    myDB = connectToMongoDB()
-    usersCollection = myDB["users"]
-    content_type = request.headers.get('Content-Type')
+def delete_user(_id):
+    document_id = parse_object_id(_id)
+    users_collection = db["users"]
 
-    if (content_type == 'application/json'):
-        
-        documentId = ObjectId(_id)     
-        filterCriteria = {'_id': documentId}
- 
-        result = usersCollection.delete_one(filterCriteria)
-        if result.deleted_count > 0:
-            successfulDeleteMessage = str(result)
-            result_dict = {
-                "modified_count": result.deleted_count,
-                "raw_result": result.raw_result,
-            }
-            response_data = {"deletedId": successfulDeleteMessage }
-        else:
-            response_data = {"message": "Error deleting user"}
-        
-        # Devuelve una respuesta en formato JSON
-        return jsonify(response_data)
-    else:
-        return 'Content-Type not accepted'
+    result = users_collection.delete_one({'_id': document_id})
 
+    if result.deleted_count == 0:
+        return jsonify({"error": "User not found"}), 404
+
+    logger.info("User %s deleted", _id)
+    return jsonify({"deletedCount": result.deleted_count}), 200
+
+
+# ---------------------------------------------------------------------------
+# Run
+# ---------------------------------------------------------------------------
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=4000)
+    app.run(host='0.0.0.0', port=FLASK_PORT)

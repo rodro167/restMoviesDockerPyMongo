@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REST Movies API — Architecture Flowchart</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0f1117;
+    color: #e0e0e0;
+    min-height: 100vh;
+  }
+  header {
+    text-align: center;
+    padding: 28px 20px 12px;
+    background: linear-gradient(135deg, #1a1c2e, #2a1a3e);
+    border-bottom: 2px solid #3a3a5c;
+  }
+  header h1 { font-size: 1.8rem; color: #a78bfa; margin-bottom: 4px; }
+  header p  { font-size: 0.95rem; color: #9ca3af; }
+
+  .chart-section {
+    max-width: 1300px;
+    margin: 30px auto;
+    padding: 0 20px;
+  }
+  .chart-section h2 {
+    font-size: 1.25rem;
+    color: #818cf8;
+    margin-bottom: 14px;
+    padding-left: 10px;
+    border-left: 3px solid #818cf8;
+  }
+  .mermaid {
+    background: #1a1c2e;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 36px;
+    overflow-x: auto;
+    border: 1px solid #2a2a4a;
+  }
+  /* Legend */
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 16px;
+    justify-content: center;
+    padding: 14px 0 24px;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 0.85rem; color: #9ca3af;
+  }
+  .legend-item .swatch {
+    width: 16px; height: 16px; border-radius: 4px; display: inline-block;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>REST Movies API — Architecture Flowchart</h1>
+  <p>Flask + PyMongo + JWT &nbsp;|&nbsp; Port 4000</p>
+</header>
+
+<div class="legend">
+  <span class="legend-item"><span class="swatch" style="background:#6366f1"></span> External libraries</span>
+  <span class="legend-item"><span class="swatch" style="background:#f59e0b"></span> Config / environment</span>
+  <span class="legend-item"><span class="swatch" style="background:#10b981"></span> Application modules</span>
+  <span class="legend-item"><span class="swatch" style="background:#3b82f6"></span> Endpoints (routes)</span>
+  <span class="legend-item"><span class="swatch" style="background:#ef4444"></span> Database</span>
+</div>
+
+<!-- ======== 1. HIGH-LEVEL MODULE ARCHITECTURE ======== -->
+<div class="chart-section">
+  <h2>1. Module &amp; Library Architecture</h2>
+  <pre class="mermaid">
+%%{init: {'theme':'dark', 'themeVariables': {'fontSize':'14px'}}}%%
+graph TD
+    subgraph EXT["External Libraries"]
+        style EXT fill:#1e1b4b,stroke:#6366f1,color:#c7d2fe
+        FLASK["Flask<br/><i>Web framework</i>"]
+        PYMONGO["PyMongo<br/><i>MongoDB driver</i>"]
+        JWT["flask_jwt_extended<br/><i>JWT auth</i>"]
+        WERK["Werkzeug<br/><i>Password hashing</i>"]
+        DOTENV["python-dotenv<br/><i>.env loader</i>"]
+        BSON["bson / ObjectId<br/><i>ID parsing</i>"]
+    end
+
+    subgraph CFG["Configuration"]
+        style CFG fill:#1c1917,stroke:#f59e0b,color:#fde68a
+        ENV[".env file<br/>MONGO_URI · MONGO_DB<br/>JWT_SECRET_KEY · FLASK_PORT"]
+    end
+
+    subgraph APP["Application Modules"]
+        style APP fill:#052e16,stroke:#10b981,color:#a7f3d0
+        MAIN["mongoRestMovies.py<br/><i>Main app · Routes · Error handlers</i>"]
+        GUEST["restMoviesGuest.py<br/><i>Movie read/query functions</i>"]
+        ADMIN["restMoviesAdmin.py<br/><i>Login · Credential validation</i>"]
+        HELPERS["db_helpers.py<br/><i>query_movies · parse_object_id<br/>require_json</i>"]
+    end
+
+    subgraph DB["Database"]
+        style DB fill:#1c0a0a,stroke:#ef4444,color:#fca5a5
+        MONGO[("MongoDB<br/>restMovies DB")]
+        MOVIES[["movies collection"]]
+        USERS[["users collection"]]
+    end
+
+    ENV -->|load_dotenv| MAIN
+    DOTENV -.->|reads| ENV
+    FLASK -->|Flask app| MAIN
+    JWT -->|@jwt_required| MAIN
+    PYMONGO -->|MongoClient| MAIN
+    WERK -->|generate_password_hash| MAIN
+    WERK -->|check_password_hash| ADMIN
+    JWT -->|create_access_token| ADMIN
+    BSON -->|ObjectId / InvalidId| HELPERS
+
+    MAIN -->|imports 10 query fns| GUEST
+    MAIN -->|imports login| ADMIN
+    MAIN -->|imports helpers| HELPERS
+    GUEST -->|imports| HELPERS
+    ADMIN -->|imports| HELPERS
+
+    MAIN -->|connect_to_mongodb| MONGO
+    MONGO --- MOVIES
+    MONGO --- USERS
+  </pre>
+</div>
+
+<!-- ======== 2. REQUEST FLOW ======== -->
+<div class="chart-section">
+  <h2>2. Request Lifecycle</h2>
+  <pre class="mermaid">
+%%{init: {'theme':'dark', 'themeVariables': {'fontSize':'13px'}}}%%
+flowchart LR
+    CLIENT["Client<br/>(HTTP)"] -->|Request| FLASK_APP["Flask App<br/>:4000"]
+
+    FLASK_APP --> ERR_H{"Error<br/>Handlers<br/>400·404·500"}
+
+    FLASK_APP --> PUBLIC_ROUTES["Public Routes"]
+    FLASK_APP --> PROTECTED["@jwt_required<br/>Protected Routes"]
+
+    PUBLIC_ROUTES --> LOGIN["POST /login"]
+    PUBLIC_ROUTES --> REGISTER["POST /users/register"]
+    PUBLIC_ROUTES --> FORM["GET /form/"]
+
+    LOGIN --> ADMIN_MOD["restMoviesAdmin.py<br/>validate_credentials()"]
+    ADMIN_MOD -->|check_password_hash| USERS_COL[("users<br/>collection")]
+    ADMIN_MOD -->|Success| TOKEN["Return JWT Token"]
+
+    REGISTER --> REQ_JSON["require_json()"]
+    REQ_JSON --> HASH["generate_password_hash()"]
+    HASH --> USERS_COL
+
+    PROTECTED --> READ_EP["Movie READ endpoints"]
+    PROTECTED --> WRITE_EP["Movie WRITE endpoints"]
+    PROTECTED --> USER_EP["User mgmt endpoints"]
+
+    READ_EP --> GUEST_MOD["restMoviesGuest.py<br/>getMoviesBy*()"]
+    READ_EP --> QM_DIRECT["query_movies()<br/><i>runtime · year filters</i>"]
+
+    GUEST_MOD --> QM["db_helpers.py<br/>query_movies()"]
+    QM_DIRECT --> QM
+    QM --> MOVIES_COL[("movies<br/>collection")]
+    QM -->|JSON response| CLIENT
+
+    WRITE_EP --> PARSE["parse_object_id()"]
+    WRITE_EP --> REQ_JSON2["require_json()"]
+    PARSE --> MOVIES_COL
+    REQ_JSON2 --> MOVIES_COL
+
+    USER_EP --> PARSE2["parse_object_id()"]
+    USER_EP --> REQ_JSON3["require_json()"]
+    PARSE2 --> USERS_COL
+    REQ_JSON3 --> USERS_COL
+
+    style CLIENT fill:#312e81,stroke:#818cf8,color:#e0e7ff
+    style TOKEN fill:#065f46,stroke:#10b981,color:#d1fae5
+    style ERR_H fill:#7f1d1d,stroke:#ef4444,color:#fecaca
+  </pre>
+</div>
+
+<!-- ======== 3. ENDPOINT MAP ======== -->
+<div class="chart-section">
+  <h2>3. Endpoint Map — All Routes</h2>
+  <pre class="mermaid">
+%%{init: {'theme':'dark', 'themeVariables': {'fontSize':'12px'}, 'flowchart': {'nodeSpacing': 14, 'rankSpacing': 40}}}%%
+graph LR
+    subgraph PUBLIC["Public Endpoints"]
+        style PUBLIC fill:#1e1b4b,stroke:#818cf8,color:#c7d2fe
+        direction TB
+        L1["POST /login<br/>→ login()"]
+        L2["POST /users/register<br/>→ register_user()"]
+        F1["GET /form/<br/>→ render form.html"]
+    end
+
+    subgraph SEARCH_SINGLE["Movie Search — Single Value  (JWT)"]
+        style SEARCH_SINGLE fill:#052e16,stroke:#10b981,color:#a7f3d0
+        direction TB
+        R1["GET /movies/<br/>→ getMovies()"]
+        R2["GET /movies/title/‹title›<br/>→ getMoviesByTitle()"]
+        R3["GET /movies/actor/‹actor›<br/>→ getMoviesByActor()"]
+        R5["GET /movies/country/‹country›<br/>→ getMoviesByCountry()"]
+        R7["GET /movies/genre/‹genre›<br/>→ getMoviesByGenre()"]
+        R9["GET /movies/director/‹dir›<br/>→ getMoviesByDirector()"]
+    end
+
+    subgraph SEARCH_MULTI["Movie Search — Multi Value  (JWT)"]
+        style SEARCH_MULTI fill:#0a3520,stroke:#34d399,color:#a7f3d0
+        direction TB
+        R4["POST /movies/actors<br/>→ getMoviesByActors()"]
+        R6["POST /movies/countries<br/>→ getMoviesByCountries()"]
+        R8["POST /movies/genres<br/>→ getMoviesByGenres()"]
+        R10["POST /movies/directors<br/>→ getMoviesByDirectors()"]
+    end
+
+    subgraph RANGE["Movie Search — Numeric Range  (JWT)"]
+        style RANGE fill:#0c2a1a,stroke:#22c55e,color:#bbf7d0
+        direction TB
+        R14["GET /movies/year/‹y›"]
+        R15["GET /movies/year/before/‹y›"]
+        R16["GET /movies/year/after/‹y›"]
+        R11["GET /movies/runtime/‹n›"]
+        R12["GET /movies/runtime/lessthan/‹n›"]
+        R13["GET /movies/runtime/morethan/‹n›"]
+    end
+
+    subgraph WRITE["Movie CRUD  (JWT)"]
+        style WRITE fill:#1a0a2e,stroke:#a78bfa,color:#ddd6fe
+        direction TB
+        W1["POST /movies/<br/>→ create_movie()"]
+        W2["PUT /movies/‹id›<br/>→ update_movie()"]
+        W3["DELETE /movies/‹id›<br/>→ delete_movie()"]
+    end
+
+    subgraph UMGMT["User Management  (JWT)"]
+        style UMGMT fill:#1c0a0a,stroke:#f87171,color:#fecaca
+        direction TB
+        U1["PUT /users/‹id›/password<br/>→ update_password()"]
+        U2["DELETE /users/‹id›<br/>→ delete_user()"]
+    end
+
+    subgraph HELPERS_BOX["db_helpers.py"]
+        style HELPERS_BOX fill:#1c1917,stroke:#f59e0b,color:#fde68a
+        direction TB
+        H1["query_movies()"]
+        H2["parse_object_id()"]
+        H3["require_json()"]
+    end
+
+    SEARCH_SINGLE --> H1
+    SEARCH_MULTI --> H1
+    RANGE --> H1
+    W2 & W3 --> H2
+    W1 & W2 --> H3
+    U1 --> H2
+    U1 --> H3
+    U2 --> H2
+    L1 & L2 --> H3
+
+    H1 --> MONGODB[("MongoDB<br/>movies")]
+    H2 --> MONGODB
+    W1 & W2 & W3 --> MONGODB
+    U1 & U2 --> USERSDB[("MongoDB<br/>users")]
+    L1 --> USERSDB
+    L2 --> USERSDB
+  </pre>
+</div>
+
+<!-- ======== 4. db_helpers.py INTERNAL ======== -->
+<div class="chart-section">
+  <h2>4. db_helpers.py — Internal Logic</h2>
+  <pre class="mermaid">
+%%{init: {'theme':'dark', 'themeVariables': {'fontSize':'13px'}}}%%
+flowchart TD
+    subgraph QM["query_movies(db, query, page, limit)"]
+        QM1["Get movies collection"] --> QM2["collection.find(query or {})"]
+        QM2 --> QM3{"page > 0?"}
+        QM3 -->|Yes| QM4["cursor.skip · limit"]
+        QM3 -->|No| QM5["Return all results"]
+        QM4 --> QM6["Convert _id → string"]
+        QM5 --> QM6
+        QM6 --> QM7["Return jsonify(movies)"]
+    end
+
+    subgraph PO["parse_object_id(id_string)"]
+        PO1["Try ObjectId(id_string)"] --> PO2{"Valid?"}
+        PO2 -->|Yes| PO3["Return ObjectId"]
+        PO2 -->|No / InvalidId| PO4["abort(400)"]
+    end
+
+    subgraph RJ["require_json(request)"]
+        RJ1{"request.is_json?"} -->|No| RJ2["abort(400)<br/>Content-Type error"]
+        RJ1 -->|Yes| RJ3["get_json(silent=True)"]
+        RJ3 --> RJ4{"body is None?"}
+        RJ4 -->|Yes| RJ5["abort(400)<br/>Invalid JSON"]
+        RJ4 -->|No| RJ6["Return parsed body"]
+    end
+
+    style QM fill:#052e16,stroke:#10b981,color:#a7f3d0
+    style PO fill:#1e1b4b,stroke:#818cf8,color:#c7d2fe
+    style RJ fill:#1c1917,stroke:#f59e0b,color:#fde68a
+  </pre>
+</div>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    securityLevel: 'loose',
+    flowchart: { curve: 'basis', useMaxWidth: true },
+  });
+</script>
+</body>
+</html>

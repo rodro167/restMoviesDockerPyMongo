@@ -1,23 +1,34 @@
-version: '3'
 services:
-  web:
-    container_name: web
-    image: rodro167/restmovies:latest
-    ports:
-      - "4000:4000"
-    depends_on:
-      - mongo
-    networks:
-      - app_net
   mongo:
     container_name: mongo
-    image: mongo:latest
+    image: mongo:7
+    restart: unless-stopped
     ports:
       - "27017:27017"
     volumes:
       - mongo_data:/data/db
     environment:
-      MONGO_INITDB_DATABASE: rest_movies
+      MONGO_INITDB_DATABASE: restMovies
+    networks:
+      - app_net
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  restmovies:
+    container_name: restmovies
+    image: rodro167/restmovies:latest
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    env_file:
+      - .env
+    depends_on:
+      mongo:
+        condition: service_healthy
     networks:
       - app_net
 

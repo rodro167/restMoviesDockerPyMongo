@@ -1,0 +1,13 @@
+.env
+.git/
+.vs/
+.gitignore
+__pycache__/
+*.pyc
+*.jmx
+terraform/
+smoke_test.py
+setup_db.py
+flowchart.html
+Performance/
+*.md
