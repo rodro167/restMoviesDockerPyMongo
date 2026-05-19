@@ -8,10 +8,12 @@
 project_id          = "my-gcp-project-12345"
 region              = "us-central1"
 zone                = "us-central1-a"
-machine_type        = "e2-small"
+machine_type        = "e2-medium"
 vm_name             = "restmovies-vm"
 ssh_user            = "rodrigo"
 ssh_public_key_path = "~/.ssh/id_rsa.pub"
 docker_image        = "rodro167/restmovies:latest"
 mongo_db            = "restMovies"
-# jwt_secret_key    = set via TF_VAR_jwt_secret_key env var (don't commit this)
+operator_ip         = "YOUR_IP/32"   # restrict monitoring ports (3000, 9090) to your IP
+# jwt_secret_key           = set via TF_VAR_jwt_secret_key env var (don't commit this)
+# grafana_admin_password   = set via TF_VAR_grafana_admin_password env var (don't commit this)

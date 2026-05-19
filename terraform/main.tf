@@ -28,6 +28,20 @@ resource "google_compute_firewall" "restmovies_fw" {
   target_tags   = ["restmovies"]
 }
 
+# ─── Firewall: allow Grafana (3000) + Prometheus (9090) from operator IP ─────
+resource "google_compute_firewall" "monitoring_fw" {
+  name    = "restmovies-allow-monitoring"
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["3000", "9090"]
+  }
+
+  source_ranges = [var.operator_ip]
+  target_tags   = ["restmovies"]
+}
+
 # ─── VM instance ─────────────────────────────────────────────────────────────
 resource "google_compute_instance" "restmovies_vm" {
   name         = var.vm_name
@@ -55,11 +69,12 @@ resource "google_compute_instance" "restmovies_vm" {
 
   # Cloud-init startup script — installs Docker, pulls image, runs compose
   metadata_startup_script = templatefile("${path.module}/startup.sh.tpl", {
-    docker_image   = var.docker_image
-    jwt_secret_key = var.jwt_secret_key
-    mongo_db       = var.mongo_db
-    mongo_uri      = "mongodb://mongo:27017/"
-    flask_port     = "4000"
+    docker_image           = var.docker_image
+    jwt_secret_key         = var.jwt_secret_key
+    mongo_db               = var.mongo_db
+    mongo_uri              = "mongodb://mongo:27017/"
+    flask_port             = "4000"
+    grafana_admin_password = var.grafana_admin_password
   })
 
   service_account {

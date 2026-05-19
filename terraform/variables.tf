@@ -56,3 +56,14 @@ variable "mongo_db" {
   type        = string
   default     = "restMovies"
 }
+
+variable "grafana_admin_password" {
+  description = "Grafana admin password (set via TF_VAR_grafana_admin_password)"
+  type        = string
+  sensitive   = true
+}
+
+variable "operator_ip" {
+  description = "Operator CIDR allowed to reach monitoring ports 3000/9090 (e.g. 203.0.113.5/32)"
+  type        = string
+}

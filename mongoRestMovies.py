@@ -4,6 +4,7 @@ from flask import Flask, jsonify, request
 import pymongo
 from werkzeug.security import generate_password_hash
 from flask_jwt_extended import JWTManager, jwt_required
+from prometheus_flask_exporter import PrometheusMetrics
 from datetime import timedelta
 from dotenv import load_dotenv
 
@@ -49,6 +50,8 @@ app.config['JSON_AS_ASCII'] = False
 app.config['JWT_SECRET_KEY'] = JWT_SECRET
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=JWT_EXPIRES_HOURS)
 jwt = JWTManager(app)
+metrics = PrometheusMetrics(app)
+metrics.info('app_info', 'RestMovies API', version='1.0')
 db = connect_to_mongodb()
 
 

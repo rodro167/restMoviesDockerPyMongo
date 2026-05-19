@@ -56,7 +56,18 @@ terraform plan -var-file=terraform.tfvars
 terraform apply
 ```
 
-The startup script (`startup.sh.tpl`) installs Docker, pulls the image, generates `.env` and `docker-compose.yaml`, starts the services, and runs `setup_db.py` automatically.
+The startup script (`startup.sh.tpl`) installs Docker, pulls the image,
+generates `.env` and the compose files, starts the services, and runs
+`setup_db.py` automatically.
+
+**Compose layout:** `docker-compose.yaml` contains 5 services (all except
+node-exporter). `docker-compose.gcp.yaml` is an overlay that adds
+node-exporter, which requires Linux host networking and fails on Docker
+Desktop (Windows/Mac).
+
+- **Local dev:** `docker compose up -d` (base file only, 5 services).
+- **GCP VM:** both files via `-f docker-compose.yaml -f docker-compose.gcp.yaml`
+  (6 services). Phase 5 will update `startup.sh.tpl` accordingly.
 
 ## Architecture
 
@@ -142,8 +153,15 @@ share the same VM for simplicity. JMeter runs from the developer's local machine
 - The Docker image `rodro167/restmovies:latest` is public on Docker Hub and is
   the source of truth for VM deployments. Local code changes require running
   `build_and_push.sh` before `terraform apply` picks them up.
-- MongoDB data is **not** persisted to a Docker volume in the current compose
-  setup — restarting the container loses data. This is intentional for the
-  training context but must be revisited before any real use.
 - `setup_db.py` is idempotent and safe to run multiple times.
 - Smoke test creates `smoke_test_user` but does not clean it up afterwards.
+- When running the stack locally via Docker Compose, `.env` must use
+  `MONGO_URI=mongodb://mongo:27017/` (container name). For local Python dev
+  without Docker, use `mongodb://localhost:27017/`.
+
+## Technical Debt
+
+- **MongoDB durability**: the `mongo_data` Docker volume persists across
+  container restarts but is destroyed with the VM on `terraform destroy`.
+  If data durability is needed, migrate to a separate GCP persistent disk
+  attached to the VM and mount it into the MongoDB container.
